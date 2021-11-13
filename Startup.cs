@@ -61,7 +61,6 @@ namespace DisneyAPI
                         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Configuration["JwtKey"]))
                     };
                 });
-
             services.AddEntityFrameworkSqlServer();
             services.AddDbContext<DisneyContext>((services , options) =>
             {

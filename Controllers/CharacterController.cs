@@ -22,6 +22,7 @@ namespace DisneyAPI.Controllers
 
         [HttpGet]
         [Route("character/{id}")]
+        [Authorize(Roles = "Admin")]
         public IActionResult Get(int id)
         {
             try

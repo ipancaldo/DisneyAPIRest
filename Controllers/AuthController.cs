@@ -2,12 +2,19 @@
 using DisneyAPI.Interfaces;
 using DisneyAPI.ViewModel.Auth.Login;
 using DisneyAPI.ViewModel.Auth.Register;
+using DisneyAPI.ViewModel.Auth.Role;
+using DisneyAPI.ViewModel.Auth.User;
 using DisneyAPI.ViewModel.Mail;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using System;
+using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
+using System.Security.Claims;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace DisneyAPI.Controllers
@@ -37,31 +44,12 @@ namespace DisneyAPI.Controllers
 
         [HttpPost]
         [Route("register")]
+        //Creates a new User
         public async Task<IActionResult> Register([FromQuery] RegisterReqVM model)
         {
-            var userExists = await _userManager.FindByNameAsync(model.Username);
-
-            if (userExists is not null) return BadRequest(new
-            {
-                Status = "Error",
-                Message = $"User creation failed for username {model.Username}. User already in the database."
-            });
-
             try
             {
                 var user = await _authRepository.CreateNewUser(model);
-
-                //if (!result.Succeeded)
-                //{
-                //    return StatusCode(StatusCodes.Status500InternalServerError, 
-                //                      new
-                //                        {
-                //                            Status = "Error",
-                //                            Message = $"The user couldn't be created. Errors: {string.Join(" ,", result.Errors.Select(x => x.Description ))}"
-                //                        });
-                //}
-
-                await _mailService.SendEmail(_authRepository.CreateMailNewUserWelcome(user));
 
                 return Ok(new
                             {
@@ -71,30 +59,35 @@ namespace DisneyAPI.Controllers
             }
             catch (Exception ex)
             {
-                if (ex.Message == "The password couldn't be setted. The user couldn't be created.")
-                {
-                  return StatusCode(StatusCodes.Status500InternalServerError,
-                                      new
-                                      {
-                                          Status = "Error",
-                                          Message = ex.Message
-                                      });
-                }
-
-                if( ex.Message == "The user already exists in the database")
-                {
-                    return BadRequest(new
-                    {
-                        Status = "Error",
-                        Message = $"User creation failed for username {model.Username}. User already in the database."
-                    });
-                }
-
                 return BadRequest(new
                 {
                     Status = "Error",
-                    Message = $"User creation failed for username {model.Username}."
+                    Message = $"User creation failed for username {model.Username}. {ex.Message}"
                 });
+            }
+        }
+
+        [HttpPost]
+        [Route("set-role")]
+        public async Task<IActionResult> SetRole(string userName, string roleName)
+        {
+            try
+            {
+                var user = await _authRepository.SetRole(userName, roleName);
+
+                return Ok(new
+                            {
+                                Status = "Ok",
+                                Message = $"Role {roleName} assigned to {userName}"
+                            });
+            }
+            catch (Exception ex)
+            {
+                if(ex.Message == "The user is not in the database" ||
+                   ex.Message == "The role is not in the database")
+                        return NotFound(ex.Message);
+                return BadRequest(ex.Message);
+
             }
         }
 
@@ -103,54 +96,24 @@ namespace DisneyAPI.Controllers
         [Route("register-admin")]
         public async Task<IActionResult> RegisterAdmin([FromQuery] RegisterReqVM model)
         {
-            var userExists = await _userManager.FindByNameAsync(model.Username);
-
-            if (userExists is not null) return BadRequest(new
-            {
-                Status = "Error",
-                Message = $"User creation failed for username {model.Username}. User already in the database."
-            });
-
-            var user = _authRepository.CreateNewUser(model);
-
             try
             {
-                //if (!result.Succeeded)
-                //{
-                //    return StatusCode(StatusCodes.Status500InternalServerError,
-                //                      new
-                //                      {
-                //                          Status = "Error",
-                //                          Message = $"The user couldn't be created. Errors: {string.Join(" ,", result.Errors.Select(x => x.Description))}"
-                //                      });
-                //}
-
-                if (!await _roleManager.RoleExistsAsync("Admin"))
-                    await _roleManager.CreateAsync(new IdentityRole("Admin"));
-
-                //await _userManager.AddToRoleAsync(user, "Admin");
-
-                //MailServiceResVM mailServiceReqVM = new MailServiceResVM
-                //{
-                //    Title = "Welcome to Disney - ADMIN",
-                //    Username = user.UserName,
-                //    Email = user.Email
-                //};
-                //await _mailService.SendEmail(mailServiceReqVM);
+                var userCreated = await _authRepository.CreateNewUser(model);
+                var user = await _authRepository.SetRole(userCreated.UserName, "Admin");
 
                 return Ok(new
                             {
                                 Status = "Ok",
-                                Message = $"User {model.Username} created succesfully."
+                                Message = $"User {model.Username} created succesfully as an admin."
                             });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return BadRequest(new
-                {
-                    Status = "Error",
-                    Message = $"User ADMIN creation failed."
-                });
+                if (ex.Message == "The user is not in the database" ||
+                    ex.Message == "The role is not in the database")
+                        return NotFound(ex.Message);
+
+                return BadRequest(ex.Message);
             }
         }
 
@@ -167,7 +130,7 @@ namespace DisneyAPI.Controllers
                     var currentUser = await _userManager.FindByNameAsync(model.Username);
                     if (currentUser.IsActive)
                     {
-                        //return Ok(await GetToken(currentUser));
+                        return Ok(await GetToken(currentUser));
                     }
                 }
 
@@ -181,6 +144,91 @@ namespace DisneyAPI.Controllers
             {
                 return StatusCode(500, ex.Message);
             }
+        }
+
+
+        [HttpPost]
+        [Route("create-role")]
+        public async Task<IActionResult> CreateRole([FromQuery] CreateRoleReqVM model)
+        {
+            try
+            {
+                if (ModelState.IsValid)
+                {
+                    IdentityRole identityRole = new IdentityRole
+                    {
+                        Name = model.RoleName
+                    };
+
+                    IdentityResult result = await _roleManager.CreateAsync(identityRole);
+
+                    if (result.Succeeded) return Ok("Role created successfully");
+
+                    foreach (IdentityError error in result.Errors)  ModelState.AddModelError("", error.Description);
+
+                }
+
+                return BadRequest(new
+                {
+                    Status = "Error",
+                    Message = $"Role creation failed for username for role {model.RoleName}. {model}"
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                        {
+                            Status = "Error",
+                            Message = $"Couldn't create role {model.RoleName}. Error: {ex.Message}"
+                        });
+            }
+        }
+
+        [HttpGet]
+        [Route("list-roles")]
+        public IActionResult ListRoles()
+        {
+            var roles = _authRepository.GetRoles();
+
+            if (roles is null) return NoContent();
+
+            return Ok(roles);
+        }
+
+        [HttpGet]
+        [Route("list-users")]
+        public IActionResult ListUsers()
+        {
+            var users = _authRepository.GetUsers();
+
+            if (users is null) return NoContent();
+
+            return Ok(users);
+        }
+
+        private async Task<LoginResVM> GetToken(User currentUser)
+        {
+            var userRoles = await _userManager.GetRolesAsync(currentUser);
+            var authClaim = new List<Claim>()
+            {
+                new Claim(ClaimTypes.Name, currentUser.UserName),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            authClaim.AddRange(userRoles.Select(x => new Claim(ClaimTypes.Role, x)));
+
+            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("VeryLongANDSecureKeyfORtESTING"));
+
+            var token = new JwtSecurityToken(issuer: "http://localhost:5000",
+                                             audience: "http://localhost:5000",
+                                             expires: DateTime.Now.AddHours(1),
+                                             claims: authClaim,
+                                             signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256));
+            return new LoginResVM
+            {
+                Token = new JwtSecurityTokenHandler().WriteToken(token),
+                ValidTo = token.ValidTo
+            };
         }
     }
 }
