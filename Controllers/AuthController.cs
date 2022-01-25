@@ -51,6 +51,8 @@ namespace DisneyAPI.Controllers
             {
                 var user = await _authRepository.CreateNewUser(model);
 
+                await SetRole(model.Username, "User");
+
                 return Ok(new
                             {
                                 Status = "Ok",
@@ -88,6 +90,45 @@ namespace DisneyAPI.Controllers
                         return NotFound(ex.Message);
                 return BadRequest(ex.Message);
 
+            }
+        }
+
+        [HttpGet]
+        [Route("check-user-role")]
+        public async Task<IActionResult> CheckUserRole(string userName)
+        {
+            try
+            {
+                var roles = await _authRepository.CheckUserRole(userName);
+                string allRoles = "";
+                for (int i = 0; i < roles.Count; i++)
+                {
+                    if (roles.Count == 1) {
+                        allRoles = roles[i];
+                        break;
+                    }
+
+                    if (i == 0) allRoles = roles[i] + ", ";
+
+                    if (i == roles.Count) {
+                        allRoles = allRoles + roles[i];
+                        break;
+                    }
+                    allRoles = allRoles + roles[i] + ", ";
+                }
+
+                return Ok(new
+                {
+                    Status = "Ok",
+                    Message = $"The roles for the user {userName} is: {allRoles}."
+                });
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message == "The user is not in the database")
+                    return NotFound(ex.Message);
+
+                return BadRequest(ex.Message);
             }
         }
 
@@ -151,37 +192,31 @@ namespace DisneyAPI.Controllers
         [Route("create-role")]
         public async Task<IActionResult> CreateRole([FromQuery] CreateRoleReqVM model)
         {
-            try
+            var valid = ModelState.IsValid;
+            if (ModelState.IsValid)
             {
-                if (ModelState.IsValid)
+                try
                 {
-                    IdentityRole identityRole = new IdentityRole
-                    {
-                        Name = model.RoleName
-                    };
-
-                    IdentityResult result = await _roleManager.CreateAsync(identityRole);
-
-                    if (result.Succeeded) return Ok("Role created successfully");
-
-                    foreach (IdentityError error in result.Errors)  ModelState.AddModelError("", error.Description);
-
+                    var result = await _authRepository.CreateRole(model);
+                    return Ok($"Role {model.RoleName} created successfully.");
                 }
-
-                return BadRequest(new
+                catch (Exception ex)
                 {
-                    Status = "Error",
-                    Message = $"Role creation failed for username for role {model.RoleName}. {model}"
-                });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new
+                    if (ex.Message == "Role creation failed.")
+                        return BadRequest(new
                         {
                             Status = "Error",
-                            Message = $"Couldn't create role {model.RoleName}. Error: {ex.Message}"
+                            Message = $"Couldn't create role {model.RoleName}."
                         });
+
+                    return BadRequest();
+                }
             }
+            return BadRequest(new
+            {
+                Status = "Error",
+                Message = "Please complete correctly the model."
+            });
         }
 
         [HttpGet]

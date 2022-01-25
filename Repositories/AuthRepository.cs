@@ -71,6 +71,46 @@ namespace DisneyAPI.Repositories
             }
         }
 
+        public async Task<bool> CreateRole(CreateRoleReqVM model)
+        {
+            try
+            {
+                IdentityRole identityRole = new IdentityRole
+                {
+                    Name = model.RoleName
+                };
+
+                IdentityResult result = await _roleManager.CreateAsync(identityRole);
+
+                if (result.Succeeded) return true;
+
+                throw new Exception("Role creation failed.");
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        public async Task<List<string>> CheckUserRole(string userName)
+        {
+            try
+            {
+                if (await CheckUserExistence(userName) is null) throw new Exception("The character is not in the database.");
+
+                var user = await _userManager.FindByNameAsync(userName);
+                var role = await _userManager.GetRolesAsync(user);
+
+                return (List<string>)role;
+            }
+            catch (Exception)
+            {
+
+                throw;
+            }
+        }
+
+
         public async Task<User> SetRole(string userName, string roleName)
         {
             try
@@ -106,7 +146,6 @@ namespace DisneyAPI.Repositories
             {
                 throw ex;
             }
-
         }
 
         public List<GetRolesResVM> GetRoles()
@@ -125,18 +164,37 @@ namespace DisneyAPI.Repositories
             }
 
             return getRolesResVM;
-        }        
-        
+        }
+
+        //public async Task<List<GetListUsersResVM>> GetUsers()
         public List<GetListUsersResVM> GetUsers()
         {
             var users = _userManager.Users;
 
+            //for (int i = 0; i < users.; i++)
+            //{
+            //    CheckUserRole(users[i])
+            //}
+            //var roles = _roleManager.Roles;
+
+            //var usersOfRole = _userManager.GetUsersInRoleAsync(roleName);
+
+
             if (users is null) throw new Exception("There is no users in the DB.");
+
 
             List<GetListUsersResVM> getListUsersResVM = new List<GetListUsersResVM>();
 
             foreach (var user in users)
             {
+                //var roles = _userManager.GetRolesAsync(user);
+
+                //var userss = users.Where(x => x.Roles.Select(y => y.Id).Contains(roleId))
+                //                  .ToList();
+                List<string> rolesForVM = new List<string>();
+
+
+
                 getListUsersResVM.Add(new GetListUsersResVM
                 {
                     IsActive = user.IsActive,

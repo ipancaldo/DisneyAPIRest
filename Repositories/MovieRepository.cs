@@ -14,18 +14,23 @@ namespace DisneyAPI.Repositories
 {
     public class MovieRepository : BaseRepository<Movie, DisneyContext>, IMovieRepository
     {
+        private readonly DisneyContext _disneyContext;
         public MovieRepository(DisneyContext dbContext) : base(dbContext)
         {
-
+            _disneyContext = dbContext;
         }
         public Movie GetMovieEntity(int id)
         {
-            return DbSet.Include(x => x.Characters).Include(x => x.Genres).ToList().FirstOrDefault(x => x.Id == id);
+            return DbSet.Include(x => x.Characters)
+                        .Include(x => x.Genres)
+                        .ToList().FirstOrDefault(x => x.Id == id);
         }
 
         public GetResMovieDetailVM GetMovie(int id)
         {
-            var movie = DbSet.Include(m => m.Genres).ToList().FirstOrDefault(x => x.Id == id);
+            var movie = DbSet.Include(m => m.Genres)
+                             .Include(c => c.Characters)
+                             .ToList().FirstOrDefault(x => x.Id == id);
 
             if (movie is default(Movie)) throw new Exception("The movie is not in the database.");
 
@@ -66,7 +71,9 @@ namespace DisneyAPI.Repositories
 
         public List<GetResFilteredMovieVM> GetMovieByFilter(GetReqFilteredMovieVM model, bool desc)
         {
-            var queryMovies = DbSet.Include(x => x.Genres).ToList().Where(g => g.Title.Contains(model.Title)).ToList();
+            var queryMovies = DbSet.Include(x => x.Genres).ToList()
+                                                          .Where(g => g.Title.Contains(model.Title))
+                                                          .ToList();
             if (queryMovies.Count < 1) throw new Exception("The movie is not in the database.");
 
             try
@@ -77,10 +84,12 @@ namespace DisneyAPI.Repositories
                     foreach (var movie in queryMovies)
                     {
                         var query = (from genresInMovie in movie.Genres
-                                    join genre in _dbContext.Genres on genresInMovie.Name equals genre.Name
-                                    where model.Genre == genresInMovie.Name
-                                    select movie).ToList();
-                        if(query.Count != 0)
+                                        join genre in _dbContext.Genres
+                                            on genresInMovie.Name equals genre.Name
+                                     where model.Genre.Contains(model.Genre)
+                                     select movie).ToList();
+                        //moviesToShow.Add((Movie)query);
+                        if (query.Count != 0)
                         {
                             moviesToShow = query;
                         }
@@ -116,6 +125,20 @@ namespace DisneyAPI.Repositories
             var movieInDB = DbSet.FirstOrDefault(x => x.Title == movieVM.Title);
             if (movieInDB is not default(Movie)) throw new Exception("The movie is already in the database.");
 
+
+            var characterInDB = (movieVM.CharacterID is not null) ? _disneyContext.Characters.FirstOrDefault(x => x.Id == movieVM.CharacterID) :
+                                                                    null;
+
+            List<Character> character = new List<Character>();
+            if(characterInDB is not null) character.Add(characterInDB);
+
+
+            var genreInDB = (movieVM.GenreID is not null) ? _disneyContext.Genres.FirstOrDefault(x => x.Id == movieVM.GenreID) :
+                                                        null;
+
+            List<Genre> genre = new List<Genre>();
+            if (genreInDB is not null) genre.Add(genreInDB);
+
             try
             {
                 Movie movie = new Movie
@@ -124,7 +147,9 @@ namespace DisneyAPI.Repositories
                     Image = movieVM.Image,
                     CreationDate = movieVM.CreationDate,
                     Score = movieVM.Score,
-                };
+                    Characters = character,
+                    Genres = genre
+            };
 
                 Add(movie);
             }

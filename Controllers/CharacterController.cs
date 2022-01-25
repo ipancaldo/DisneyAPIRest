@@ -10,10 +10,9 @@ namespace DisneyAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Admin")]
+    //[Authorize(Roles = "Admin")]
     public class CharacterController : ControllerBase
     {
-        //This comes from the Startup (dependency injection)
         private readonly ICharacterRepository _characterRepository;
         public CharacterController(ICharacterRepository characterRepository)
         {

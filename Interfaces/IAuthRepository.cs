@@ -38,6 +38,15 @@ namespace DisneyAPI.Interfaces
         /// <param name="user"></param>
         MailServiceResVM EmailUser(User user, string title, string body);
 
+        Task<bool> CreateRole(CreateRoleReqVM model);
+
+        /// <summary>
+        /// Checks the roles of a specific user.
+        /// </summary>
+        /// <param name="userName"></param>
+        /// <returns></returns>
+        Task<List<string>> CheckUserRole(string userName);
+
         /// <summary>
         /// Lists all the roles in the DB
         /// </summary>
